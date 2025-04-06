@@ -43,7 +43,7 @@
   </style>
 </head>
 <body>
-  <div id="ui">Skóre: 0 | Čas: </div>
+  <div id="ui">Skóre: 0</div>
   <div id="game"></div>
   <script>
     const cols = 20, rows = 20;
@@ -103,9 +103,7 @@
     };
 
     let currentPiece = null;
-    let lockTime = null;
     let score = 0;
-    let lockDuration = 3;
     let moveDirection = null;
     let moveInterval = null;
 
@@ -114,7 +112,6 @@
     }
 
     function spawnPiece() {
-      // Vyčistíme grid od všech fixed kusů při prvním spawnu
       if (!currentPiece) {
         clearGrid('fixed');
         clearGrid('active');
@@ -125,7 +122,6 @@
       currentPiece = { x: 10, y: 10, shape: shape };
 
       if (collides(currentPiece)) {
-        // Pokud je to první spawn a koliduje, zkusíme jinou pozici
         let foundPosition = false;
         for (let y = 0; y < rows && !foundPosition; y++) {
           for (let x = 0; x < cols; x++) {
@@ -145,74 +141,44 @@
       }
 
       drawPiece(currentPiece, 'active');
-      lockTime = null;
       moveDirection = null;
       if (moveInterval) clearInterval(moveInterval);
       updateUI();
     }
 
-    function fixPiece() {
-      drawPiece(currentPiece, 'fixed');
-      currentPiece = null;
-      if (moveInterval) clearInterval(moveInterval);
-      checkConnection();
-    }
-
     function updateUI() {
-      ui.textContent = `Skóre: ${score} | Čas: ${lockTime ? (lockDuration - (Date.now() - lockTime) / 1000).toFixed(1) : ''}`;
+      ui.textContent = `Skóre: ${score}`;
     }
 
     function movePiece(dx, dy) {
       if (!currentPiece) return;
-      if (!moveDirection) {
-        moveDirection = { dx, dy };
-        clearGrid('active');
-        currentPiece.x += dx;
-        currentPiece.y += dy;
-        if (collides(currentPiece)) {
-          currentPiece.x -= dx;
-          currentPiece.y -= dy;
-          if (!lockTime) {
-            lockTime = Date.now();
-            const lockInterval = setInterval(() => {
-              const elapsed = (Date.now() - lockTime) / 1000;
-              updateUI();
-              if (elapsed >= lockDuration) {
-                clearInterval(lockInterval);
-                fixPiece();
-                setTimeout(spawnPiece, 1000);
-              }
-            }, 100);
-          }
-        } else {
-          moveInterval = setInterval(() => {
-            if (!currentPiece) {
-              clearInterval(moveInterval);
-              return;
-            }
-            clearGrid('active');
-            currentPiece.x += moveDirection.dx;
-            currentPiece.y += moveDirection.dy;
-            if (collides(currentPiece)) {
-              currentPiece.x -= moveDirection.dx;
-              currentPiece.y -= moveDirection.dy;
-              if (!lockTime) {
-                lockTime = Date.now();
-                const lockInterval = setInterval(() => {
-                  const elapsed = (Date.now() - lockTime) / 1000;
-                  updateUI();
-                  if (elapsed >= lockDuration) {
-                    clearInterval(lockInterval);
-                    fixPiece();
-                    setTimeout(spawnPiece, 1000);
-                  }
-                }, 100);
-              }
-            }
-            drawPiece(currentPiece, 'active');
-          }, 500);
+
+      // Nastavíme nový směr pohybu
+      moveDirection = { dx, dy };
+
+      // Zrušíme předchozí interval, pokud existuje
+      if (moveInterval) clearInterval(moveInterval);
+
+      // Spustíme nový interval pro automatický pohyb
+      moveInterval = setInterval(() => {
+        if (!currentPiece) {
+          clearInterval(moveInterval);
+          return;
         }
-      }
+        clearGrid('active');
+        currentPiece.x += moveDirection.dx;
+        currentPiece.y += moveDirection.dy;
+        if (collides(currentPiece)) {
+          // Pokud narazí, vrátíme ho zpět a zastavíme pohyb
+          currentPiece.x -= moveDirection.dx;
+          currentPiece.y -= moveDirection.dy;
+          clearInterval(moveInterval);
+          moveInterval = null;
+          moveDirection = null;
+        }
+        drawPiece(currentPiece, 'active');
+      }, 500);
+
       drawPiece(currentPiece, 'active');
     }
 
@@ -234,7 +200,7 @@
 
       // Levý-pravý okraj
       for (let y = 0; y < rows; y++) {
-        if (grid[xyToIndex(0, y)].classList.contains('fixed')) {
+        if (grid[xyToIndex(0, y)].classList.contains('fixed') || grid[xyToIndex(0, y)].classList.contains('active')) {
           const queue = [[0, y]];
           visited.clear();
           path.clear();
@@ -257,7 +223,7 @@
             for (let [dx, dy] of directions) {
               const nx = x + dx, ny = y + dy;
               const nextIndex = xyToIndex(nx, ny);
-              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(nextIndex) && grid[nextIndex].classList.contains('fixed')) {
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(nextIndex) && (grid[nextIndex].classList.contains('fixed') || grid[nextIndex].classList.contains('active'))) {
                 queue.push([nx, ny]);
                 visited.add(nextIndex);
                 path.set(nextIndex, xyToIndex(x, y));
@@ -269,7 +235,7 @@
 
       // Horní-dolní okraj
       for (let x = 0; x < cols; x++) {
-        if (grid[xyToIndex(x, 0)].classList.contains('fixed')) {
+        if (grid[xyToIndex(x, 0)].classList.contains('fixed') || grid[xyToIndex(x, 0)].classList.contains('active')) {
           const queue = [[x, 0]];
           visited.clear();
           path.clear();
@@ -292,7 +258,7 @@
             for (let [dx, dy] of directions) {
               const nx = x + dx, ny = y + dy;
               const nextIndex = xyToIndex(nx, ny);
-              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(nextIndex) && grid[nextIndex].classList.contains('fixed')) {
+              if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(nextIndex) && (grid[nextIndex].classList.contains('fixed') || grid[nextIndex].classList.contains('active'))) {
                 queue.push([nx, ny]);
                 visited.add(nextIndex);
                 path.set(nextIndex, xyToIndex(x, y));
@@ -310,10 +276,11 @@
       }
       setTimeout(() => {
         for (let index of connection) {
-          grid[index].classList.remove('fixed', 'path');
+          grid[index].classList.remove('fixed', 'path', 'active');
         }
+        currentPiece = null;
+        if (moveInterval) clearInterval(moveInterval);
         moveRemainingPieces();
-        lockDuration = Math.max(1, lockDuration - 0.2);
         setTimeout(spawnPiece, 500);
       }, 500);
     }
@@ -347,10 +314,22 @@
     }
 
     document.addEventListener('keydown', e => {
-      if (e.key === 'ArrowLeft') movePiece(-1, 0);
-      if (e.key === 'ArrowRight') movePiece(1, 0);
-      if (e.key === 'ArrowUp') movePiece(0, -1);
-      if (e.key === 'ArrowDown') movePiece(0, 1);
+      if (e.key === 'ArrowLeft') {
+        movePiece(-1, 0);
+        checkConnection();
+      }
+      if (e.key === 'ArrowRight') {
+        movePiece(1, 0);
+        checkConnection();
+      }
+      if (e.key === 'ArrowUp') {
+        movePiece(0, -1);
+        checkConnection();
+      }
+      if (e.key === 'ArrowDown') {
+        movePiece(0, 1);
+        checkConnection();
+      }
       if (e.key === 'r' || e.key === 'R') rotatePiece();
     });
 
@@ -368,11 +347,23 @@
       let dx = e.changedTouches[0].clientX - touchStart.clientX;
       let dy = e.changedTouches[0].clientY - touchStart.clientY;
       if (Math.abs(dx) > Math.abs(dy)) {
-        if (dx > 10) movePiece(1, 0);
-        if (dx < -10) movePiece(-1, 0);
+        if (dx > 10) {
+          movePiece(1, 0);
+          checkConnection();
+        }
+        if (dx < -10) {
+          movePiece(-1, 0);
+          checkConnection();
+        }
       } else {
-        if (dy > 10) movePiece(0, 1);
-        if (dy < -10) movePiece(0, -1);
+        if (dy > 10) {
+          movePiece(0, 1);
+          checkConnection();
+        }
+        if (dy < -10) {
+          movePiece(0, -1);
+          checkConnection();
+        }
       }
       touchStart = null;
     });
@@ -386,7 +377,6 @@
       lastTap = now;
     });
 
-    // Inicializace hry
     spawnPiece();
   </script>
 </body>
