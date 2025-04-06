@@ -2,218 +2,303 @@
 <html lang="cs">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tetrisnake</title>
   <style>
-    body {
+    html, body {
       margin: 0;
+      height: 100%;
       background: #111;
-      color: #fff;
-      font-family: sans-serif;
       display: flex;
-      flex-direction: column;
       align-items: center;
+      justify-content: center;
+      flex-direction: column;
     }
     #game {
       display: grid;
       grid-template-columns: repeat(20, 20px);
       grid-template-rows: repeat(20, 20px);
       gap: 1px;
-      margin: 20px;
+      background: #222;
+      touch-action: none;
     }
     .cell {
       width: 20px;
       height: 20px;
-      background-color: #222;
+      background: #333;
     }
     .active {
-      background-color: lime;
+      background: lime;
     }
     .fixed {
-      background-color: #555;
+      background: cyan;
     }
-    .connecting {
-      background-color: gold;
+    .path {
+      background: yellow; /* Zvýraznění spojnice */
     }
-    #score {
-      margin-top: 10px;
-      font-size: 1.2em;
-    }
-    #timer {
-      margin-top: 5px;
-      font-size: 1em;
-      color: #ff6666;
+    #ui {
+      color: white;
+      font-family: monospace;
+      margin-bottom: 10px;
     }
   </style>
 </head>
 <body>
-  <h1>Tetrisnake</h1>
+  <div id="ui">Skóre: 0 | Čas: </div>
   <div id="game"></div>
-  <div id="score">Skóre: 0</div>
-  <div id="timer"></div>
-
   <script>
-    const gridSize = 20;
-    const gameElement = document.getElementById("game");
-    const timerElement = document.getElementById("timer");
-    const scoreElement = document.getElementById("score");
-    let score = 0;
+    const cols = 20, rows = 20;
+    const game = document.getElementById('game');
+    const ui = document.getElementById('ui');
+    const grid = [];
 
-    const directions = {
-      ArrowUp: [0, -1],
-      ArrowDown: [0, 1],
-      ArrowLeft: [-1, 0],
-      ArrowRight: [1, 0],
+    // Grid init
+    for (let i = 0; i < cols * rows; i++) {
+      const div = document.createElement('div');
+      div.classList.add('cell');
+      game.appendChild(div);
+      grid.push(div);
+    }
+
+    function xyToIndex(x, y) {
+      return y * cols + x;
+    }
+
+    function drawPiece(piece, cls) {
+      for (let [x, y] of piece.shape) {
+        let gx = piece.x + x;
+        let gy = piece.y + y;
+        if (gx >= 0 && gx < cols && gy >= 0 && gy < rows) {
+          grid[xyToIndex(gx, gy)].classList.add(cls);
+        }
+      }
+    }
+
+    function clearGrid(cls) {
+      for (let cell of grid) {
+        cell.classList.remove(cls);
+      }
+    }
+
+    function collides(piece) {
+      for (let [x, y] of piece.shape) {
+        let gx = piece.x + x;
+        let gy = piece.y + y;
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return true;
+        if (grid[xyToIndex(gx, gy)].classList.contains('fixed')) return true;
+      }
+      return false;
+    }
+
+    const shapes = {
+      I: [[0,0], [1,0], [-1,0], [-2,0]],
+      O: [[0,0], [1,0], [0,1], [1,1]],
+      T: [[0,0], [-1,0], [1,0], [0,1]],
+      S: [[0,0], [1,0], [0,1], [-1,1]],
+      Z: [[0,0], [-1,0], [0,1], [1,1]],
+      L: [[0,0], [-1,0], [-2,0], [0,1]],
+      J: [[0,0], [1,0], [2,0], [0,1]],
     };
 
-    let cells = [];
-    for (let i = 0; i < gridSize * gridSize; i++) {
-      const cell = document.createElement("div");
-      cell.classList.add("cell");
-      gameElement.appendChild(cell);
-      cells.push(cell);
+    let currentPiece = null;
+    let lockTime = null;
+    let score = 0;
+    let lockDuration = 3; // Počáteční čas na ukotvení (sekundy)
+
+    function rotate(shape) {
+      return shape.map(([x, y]) => [-y, x]);
     }
 
-    function getIndex(x, y) {
-      return y * gridSize + x;
-    }
-
-    function drawGrid() {
-      cells.forEach(c => c.className = "cell");
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          if (grid[y][x] === 1) cells[getIndex(x, y)].classList.add("fixed");
-          if (grid[y][x] === 2) cells[getIndex(x, y)].classList.add("active");
-        }
+    function spawnPiece() {
+      const keys = Object.keys(shapes);
+      const shape = shapes[keys[Math.floor(Math.random() * keys.length)]];
+      currentPiece = { x: 10, y: 10, shape: shape };
+      if (collides(currentPiece)) {
+        alert("Konec hry! Skóre: " + score);
+        location.reload();
       }
+      drawPiece(currentPiece, 'active');
+      lockTime = null;
+      updateUI();
     }
 
-    function isInside(x, y) {
-      return x >= 0 && y >= 0 && x < gridSize && y < gridSize;
-    }
-
-    function clearActive() {
-      for (let y = 0; y < gridSize; y++)
-        for (let x = 0; x < gridSize; x++)
-          if (grid[y][x] === 2) grid[y][x] = 0;
-    }
-
-    function placeActive() {
-      activeShape.forEach(([x, y]) => {
-        if (isInside(x, y)) grid[y][x] = 2;
-      });
-    }
-
-    function move(dx, dy) {
-      const moved = activeShape.map(([x, y]) => [x + dx, y + dy]);
-      if (moved.every(([x, y]) => isInside(x, y) && grid[y][x] !== 1)) {
-        clearActive();
-        activeShape = moved;
-        placeActive();
-        drawGrid();
-        return true;
-      } else {
-        if (!timerStarted) startTimer();
-        return false;
-      }
-    }
-
-    function startTimer() {
-      timerStarted = true;
-      let countdown = 3;
-      timerElement.textContent = `Ukotvení za: ${countdown}`;
-      const interval = setInterval(() => {
-        countdown--;
-        timerElement.textContent = `Ukotvení za: ${countdown}`;
-        if (countdown <= 0) {
-          clearInterval(interval);
-          timerElement.textContent = "Ukotveno";
-          fixShape();
-        }
-      }, 1000);
-    }
-
-    function fixShape() {
-      activeShape.forEach(([x, y]) => {
-        if (isInside(x, y)) grid[y][x] = 1;
-      });
+    function fixPiece() {
+      drawPiece(currentPiece, 'fixed');
+      currentPiece = null;
       checkConnection();
-      setTimeout(spawnNewShape, 3000);
     }
 
-    function checkConnection() {
-      // Hledání spojení krajů – zjednodušená logika zatím: přičti body, smaž přímku
-      const visited = Array.from({ length: gridSize }, () => Array(gridSize).fill(false));
-      let found = false;
-      for (let y = 0; y < gridSize; y++) {
-        for (let x = 0; x < gridSize; x++) {
-          if (grid[y][x] === 1 && !visited[y][x]) {
-            const cluster = [];
-            floodFill(x, y, visited, cluster);
-            if (touchesTwoEdges(cluster)) {
-              found = true;
-              cluster.forEach(([cx, cy]) => grid[cy][cx] = 0);
-              score += cluster.length;
-              scoreElement.textContent = `Skóre: ${score}`;
+    function updateUI() {
+      ui.textContent = `Skóre: ${score} | Čas: ${lockTime ? (lockDuration - (Date.now() - lockTime) / 1000).toFixed(1) : ''}`;
+    }
+
+    function movePiece(dx, dy) {
+      if (!currentPiece) return;
+      clearGrid('active');
+      currentPiece.x += dx;
+      currentPiece.y += dy;
+      if (collides(currentPiece)) {
+        currentPiece.x -= dx;
+        currentPiece.y -= dy;
+        if (!lockTime) {
+          lockTime = Date.now();
+          const lockInterval = setInterval(() => {
+            const elapsed = (Date.now() - lockTime) / 1000;
+            updateUI();
+            if (elapsed >= lockDuration) {
+              clearInterval(lockInterval);
+              fixPiece();
+              setTimeout(spawnPiece, 1000); // Zkrátil jsem na 1s pro plynulejší hru
             }
+          }, 100);
+        }
+      }
+      drawPiece(currentPiece, 'active');
+    }
+
+    function rotatePiece() {
+      if (!currentPiece) return;
+      clearGrid('active');
+      const oldShape = currentPiece.shape;
+      currentPiece.shape = rotate(oldShape);
+      if (collides(currentPiece)) {
+        currentPiece.shape = oldShape;
+      }
+      drawPiece(currentPiece, 'active');
+    }
+
+    // BFS pro hledání spojnice mezi okraji
+    function checkConnection() {
+      const visited = new Set();
+      const queue = [];
+      const path = new Map(); // Pro rekonstrukci cesty
+      let startEdge = null, endEdge = null;
+
+      // Najdeme startovní body na levém okraji
+      for (let y = 0; y < rows; y++) {
+        if (grid[xyToIndex(0, y)].classList.contains('fixed')) {
+          queue.push([0, y]);
+          visited.add(xyToIndex(0, y));
+          path.set(xyToIndex(0, y), null);
+          startEdge = 'left';
+          break;
+        }
+      }
+
+      if (!queue.length) return; // Žádný start na levém okraji
+
+      const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]]; // Levo, pravo, nahoru, dolů
+      while (queue.length) {
+        const [x, y] = queue.shift();
+        if ((startEdge === 'left' && x === cols - 1) || (startEdge === 'top' && y === rows - 1)) {
+          endEdge = startEdge === 'left' ? 'right' : 'bottom';
+          let current = xyToIndex(x, y);
+          const connection = [];
+          while (current !== null) {
+            connection.push(current);
+            current = path.get(current);
+          }
+          handleConnection(connection);
+          return;
+        }
+
+        for (let [dx, dy] of directions) {
+          const nx = x + dx, ny = y + dy;
+          const nextIndex = xyToIndex(nx, ny);
+          if (nx >= 0 && nx < cols && ny >= 0 && ny < rows && !visited.has(nextIndex) && grid[nextIndex].classList.contains('fixed')) {
+            queue.push([nx, ny]);
+            visited.add(nextIndex);
+            path.set(nextIndex, xyToIndex(x, y));
           }
         }
       }
-      if (found) drawGrid();
     }
 
-    function floodFill(x, y, visited, cluster) {
-      const stack = [[x, y]];
-      while (stack.length > 0) {
-        const [cx, cy] = stack.pop();
-        if (!isInside(cx, cy) || visited[cy][cx] || grid[cy][cx] !== 1) continue;
-        visited[cy][cx] = true;
-        cluster.push([cx, cy]);
-        [[1,0],[-1,0],[0,1],[0,-1]].forEach(([dx, dy]) => stack.push([cx+dx, cy+dy]));
+    function handleConnection(connection) {
+      score += connection.length;
+      // Zvýrazníme spojnici
+      for (let index of connection) {
+        grid[index].classList.add('path');
       }
-    }
-
-    function touchesTwoEdges(cluster) {
-      const edges = new Set();
-      cluster.forEach(([x, y]) => {
-        if (x === 0) edges.add("left");
-        if (x === gridSize - 1) edges.add("right");
-        if (y === 0) edges.add("top");
-        if (y === gridSize - 1) edges.add("bottom");
-      });
-      return edges.size >= 2;
-    }
-
-    function spawnNewShape() {
-      timerElement.textContent = "Generování nového objektu...";
-      activeShape = [
-        [10, 9],
-        [10, 10],
-        [9, 10],
-        [11, 10],
-      ];
-      if (activeShape.some(([x, y]) => grid[y][x] !== 0)) {
-        alert("Hra skončila! Není místo pro nový objekt.");
-        return;
-      }
-      timerStarted = false;
-      placeActive();
-      drawGrid();
       setTimeout(() => {
-        timerElement.textContent = "";
-      }, 3000);
+        // Smažeme spojnici
+        for (let index of connection) {
+          grid[index].classList.remove('fixed', 'path');
+        }
+        moveRemainingPieces();
+        lockDuration = Math.max(1, lockDuration - 0.2); // Zkracujeme čas na ukotvení
+        setTimeout(spawnPiece, 500);
+      }, 500); // Čas na zobrazení spojnice
     }
 
-    document.addEventListener("keydown", e => {
-      if (e.key in directions) move(...directions[e.key]);
+    function moveRemainingPieces() {
+      const fixedCells = [];
+      for (let i = 0; i < grid.length; i++) {
+        if (grid[i].classList.contains('fixed')) {
+          fixedCells.push(i);
+        }
+      }
+
+      for (let index of fixedCells) {
+        const x = index % cols;
+        const y = Math.floor(index / cols);
+        const distLeft = x;
+        const distRight = cols - 1 - x;
+        const distTop = y;
+        const distBottom = rows - 1 - y;
+        const minDist = Math.min(distLeft, distRight, distTop, distBottom);
+
+        let newX = x, newY = y;
+        if (minDist === distLeft) newX = 0;
+        else if (minDist === distRight) newX = cols - 1;
+        else if (minDist === distTop) newY = 0;
+        else if (minDist === distBottom) newY = rows - 1;
+
+        grid[index].classList.remove('fixed');
+        grid[xyToIndex(newX, newY)].classList.add('fixed');
+      }
+    }
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') movePiece(-1, 0);
+      if (e.key === 'ArrowRight') movePiece(1, 0);
+      if (e.key === 'ArrowUp') movePiece(0, -1);
+      if (e.key === 'ArrowDown') movePiece(0, 1);
+      if (e.key === 'x') rotatePiece();
     });
 
-    let grid = Array.from({ length: gridSize }, () => Array(gridSize).fill(0));
-    let activeShape = [];
-    let timerStarted = false;
+    game.addEventListener('dblclick', rotatePiece);
+    let touchStart = null;
 
-    spawnNewShape();
-    setInterval(() => move(0, 1), 600); // automatický pohyb dolů každých 600ms
+    game.addEventListener('touchstart', e => {
+      if (e.touches.length === 1) {
+        touchStart = e.touches[0];
+      }
+    });
+
+    game.addEventListener('touchend', e => {
+      if (!touchStart) return;
+      let dx = e.changedTouches[0].clientX - touchStart.clientX;
+      let dy = e.changedTouches[0].clientY - touchStart.clientY;
+      if (Math.abs(dx) > Math.abs(dy)) {
+        if (dx > 10) movePiece(1, 0);
+        if (dx < -10) movePiece(-1, 0);
+      } else {
+        if (dy > 10) movePiece(0, 1);
+        if (dy < -10) movePiece(0, -1);
+      }
+      touchStart = null;
+    });
+
+    let lastTap = 0;
+    game.addEventListener('touchstart', e => {
+      let now = Date.now();
+      if (now - lastTap < 300) {
+        rotatePiece();
+      }
+      lastTap = now;
+    });
+
+    spawnPiece();
   </script>
 </body>
 </html>
