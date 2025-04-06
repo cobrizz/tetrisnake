@@ -83,8 +83,11 @@
       for (let [x, y] of piece.shape) {
         let gx = piece.x + x;
         let gy = piece.y + y;
-        if (gx < 0 || gx >= cols || gy < 0 || gy < rows) return true;
-        if (grid[xyToIndex(gx, gy)].classList.contains('fixed')) return true;
+        if (gx < 0 || gx >= cols || gy < 0 || gy >= rows) return true;
+        let index = xyToIndex(gx, gy);
+        if (grid[index].classList.contains('fixed') && !grid[index].classList.contains('active')) {
+          return true;
+        }
       }
       return false;
     }
@@ -103,25 +106,48 @@
     let lockTime = null;
     let score = 0;
     let lockDuration = 3;
-    let moveDirection = null; // Směr automatického pohybu
-    let moveInterval = null; // Interval pro automatický pohyb
+    let moveDirection = null;
+    let moveInterval = null;
 
     function rotate(shape) {
       return shape.map(([x, y]) => [-y, x]);
     }
 
     function spawnPiece() {
+      // Vyčistíme grid od všech fixed kusů při prvním spawnu
+      if (!currentPiece) {
+        clearGrid('fixed');
+        clearGrid('active');
+      }
+
       const keys = Object.keys(shapes);
       const shape = shapes[keys[Math.floor(Math.random() * keys.length)]];
       currentPiece = { x: 10, y: 10, shape: shape };
+
       if (collides(currentPiece)) {
-        alert("Konec hry! Skóre: " + score);
-        location.reload();
+        // Pokud je to první spawn a koliduje, zkusíme jinou pozici
+        let foundPosition = false;
+        for (let y = 0; y < rows && !foundPosition; y++) {
+          for (let x = 0; x < cols; x++) {
+            currentPiece.x = x;
+            currentPiece.y = y;
+            if (!collides(currentPiece)) {
+              foundPosition = true;
+              break;
+            }
+          }
+        }
+        if (!foundPosition) {
+          alert("Konec hry! Skóre: " + score);
+          location.reload();
+          return;
+        }
       }
+
       drawPiece(currentPiece, 'active');
       lockTime = null;
-      moveDirection = null; // Reset směru pohybu
-      if (moveInterval) clearInterval(moveInterval); // Zrušíme předchozí pohyb
+      moveDirection = null;
+      if (moveInterval) clearInterval(moveInterval);
       updateUI();
     }
 
@@ -138,7 +164,7 @@
 
     function movePiece(dx, dy) {
       if (!currentPiece) return;
-      if (!moveDirection) { // Nastavíme směr pohybu jen poprvé
+      if (!moveDirection) {
         moveDirection = { dx, dy };
         clearGrid('active');
         currentPiece.x += dx;
@@ -159,7 +185,6 @@
             }, 100);
           }
         } else {
-          // Spustíme automatický pohyb
           moveInterval = setInterval(() => {
             if (!currentPiece) {
               clearInterval(moveInterval);
@@ -185,7 +210,7 @@
               }
             }
             drawPiece(currentPiece, 'active');
-          }, 500); // 500ms = 1 bod za 500ms
+          }, 500);
         }
       }
       drawPiece(currentPiece, 'active');
@@ -207,7 +232,7 @@
       const path = new Map();
       const directions = [[-1, 0], [1, 0], [0, -1], [0, 1]];
 
-      // Zkoušíme levý-pravý okraj
+      // Levý-pravý okraj
       for (let y = 0; y < rows; y++) {
         if (grid[xyToIndex(0, y)].classList.contains('fixed')) {
           const queue = [[0, y]];
@@ -242,7 +267,7 @@
         }
       }
 
-      // Zkoušíme horní-dolní okraj
+      // Horní-dolní okraj
       for (let x = 0; x < cols; x++) {
         if (grid[xyToIndex(x, 0)].classList.contains('fixed')) {
           const queue = [[x, 0]];
@@ -361,6 +386,7 @@
       lastTap = now;
     });
 
+    // Inicializace hry
     spawnPiece();
   </script>
 </body>
